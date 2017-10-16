@@ -27,7 +27,7 @@ class Event
      *
      * @var string
      */
-    public $expression = '* * * * * *';
+    public $expression = '* * * * *';
 
     /**
      * The timezone the date should be evaluated on.
@@ -516,11 +516,14 @@ class Event
     /**
      * Do not allow the event to overlap each other.
      *
+     * @param  int  $expiresAt
      * @return $this
      */
-    public function withoutOverlapping()
+    public function withoutOverlapping($expiresAt = 1440)
     {
         $this->withoutOverlapping = true;
+
+        $this->expiresAt = $expiresAt;
 
         return $this->then(function () {
             $this->mutex->forget($this);
@@ -532,12 +535,14 @@ class Event
     /**
      * Register a callback to further filter the schedule.
      *
-     * @param  \Closure  $callback
+     * @param  \Closure|bool  $callback
      * @return $this
      */
-    public function when(Closure $callback)
+    public function when($callback)
     {
-        $this->filters[] = $callback;
+        $this->filters[] = is_callable($callback) ? $callback : function () use ($callback) {
+            return $callback;
+        };
 
         return $this;
     }
@@ -545,12 +550,14 @@ class Event
     /**
      * Register a callback to further filter the schedule.
      *
-     * @param  \Closure  $callback
+     * @param  \Closure|bool  $callback
      * @return $this
      */
-    public function skip(Closure $callback)
+    public function skip($callback)
     {
-        $this->rejects[] = $callback;
+        $this->rejects[] = is_callable($callback) ? $callback : function () use ($callback) {
+            return $callback;
+        };
 
         return $this;
     }

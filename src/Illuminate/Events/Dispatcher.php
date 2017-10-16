@@ -332,7 +332,7 @@ class Dispatcher implements DispatcherContract
     /**
      * Register an event listener with the dispatcher.
      *
-     * @param  string|\Closure  $listener
+     * @param  \Closure|string  $listener
      * @param  bool  $wildcard
      * @return \Closure
      */
@@ -426,10 +426,30 @@ class Dispatcher implements DispatcherContract
     protected function createQueuedHandlerCallable($class, $method)
     {
         return function () use ($class, $method) {
-            $this->queueHandler($class, $method, array_map(function ($a) {
+            $arguments = array_map(function ($a) {
                 return is_object($a) ? clone $a : $a;
-            }, func_get_args()));
+            }, func_get_args());
+
+            if ($this->handlerWantsToBeQueued($class, $arguments)) {
+                $this->queueHandler($class, $method, $arguments);
+            }
         };
+    }
+
+    /**
+     * Determine if the event handler wants to be queued.
+     *
+     * @param  string  $class
+     * @param  array  $arguments
+     * @return bool
+     */
+    protected function handlerWantsToBeQueued($class, $arguments)
+    {
+        if (method_exists($class, 'shouldQueue')) {
+            return $this->container->make($class)->shouldQueue($arguments[0]);
+        }
+
+        return true;
     }
 
     /**
@@ -484,6 +504,8 @@ class Dispatcher implements DispatcherContract
         return tap($job, function ($job) use ($listener) {
             $job->tries = $listener->tries ?? null;
             $job->timeout = $listener->timeout ?? null;
+            $job->timeoutAt = method_exists($listener, 'retryUntil')
+                                ? $listener->retryUntil() : null;
         });
     }
 

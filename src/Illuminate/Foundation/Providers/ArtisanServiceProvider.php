@@ -4,7 +4,7 @@ namespace Illuminate\Foundation\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Queue\Console\TableCommand;
-use Illuminate\Auth\Console\MakeAuthCommand;
+use Illuminate\Auth\Console\AuthMakeCommand;
 use Illuminate\Foundation\Console\UpCommand;
 use Illuminate\Foundation\Console\DownCommand;
 use Illuminate\Auth\Console\ClearResetsCommand;
@@ -16,7 +16,6 @@ use Illuminate\Foundation\Console\AppNameCommand;
 use Illuminate\Foundation\Console\JobMakeCommand;
 use Illuminate\Database\Console\Seeds\SeedCommand;
 use Illuminate\Foundation\Console\MailMakeCommand;
-use Illuminate\Foundation\Console\OptimizeCommand;
 use Illuminate\Foundation\Console\RuleMakeCommand;
 use Illuminate\Foundation\Console\TestMakeCommand;
 use Illuminate\Foundation\Console\EventMakeCommand;
@@ -39,8 +38,10 @@ use Illuminate\Routing\Console\ControllerMakeCommand;
 use Illuminate\Routing\Console\MiddlewareMakeCommand;
 use Illuminate\Foundation\Console\ListenerMakeCommand;
 use Illuminate\Foundation\Console\ProviderMakeCommand;
+use Illuminate\Foundation\Console\ResourceMakeCommand;
 use Illuminate\Foundation\Console\ClearCompiledCommand;
 use Illuminate\Foundation\Console\EventGenerateCommand;
+use Illuminate\Foundation\Console\ExceptionMakeCommand;
 use Illuminate\Foundation\Console\VendorPublishCommand;
 use Illuminate\Console\Scheduling\ScheduleFinishCommand;
 use Illuminate\Database\Console\Seeds\SeederMakeCommand;
@@ -97,7 +98,6 @@ class ArtisanServiceProvider extends ServiceProvider
         'MigrateReset' => 'command.migrate.reset',
         'MigrateRollback' => 'command.migrate.rollback',
         'MigrateStatus' => 'command.migrate.status',
-        'Optimize' => 'command.optimize',
         'PackageDiscover' => 'command.package.discover',
         'Preset' => 'command.preset',
         'QueueFailed' => 'command.queue.failed',
@@ -131,6 +131,7 @@ class ArtisanServiceProvider extends ServiceProvider
         'ControllerMake' => 'command.controller.make',
         'EventGenerate' => 'command.event.generate',
         'EventMake' => 'command.event.make',
+        'ExceptionMake' => 'command.exception.make',
         'FactoryMake' => 'command.factory.make',
         'JobMake' => 'command.job.make',
         'ListenerMake' => 'command.listener.make',
@@ -145,6 +146,7 @@ class ArtisanServiceProvider extends ServiceProvider
         'QueueFailedTable' => 'command.queue.failed-table',
         'QueueTable' => 'command.queue.table',
         'RequestMake' => 'command.request.make',
+        'ResourceMake' => 'command.resource.make',
         'RuleMake' => 'command.rule.make',
         'SeederMake' => 'command.seeder.make',
         'SessionTable' => 'command.session.table',
@@ -200,7 +202,7 @@ class ArtisanServiceProvider extends ServiceProvider
     protected function registerAuthMakeCommand()
     {
         $this->app->singleton('command.auth.make', function ($app) {
-            return new MakeAuthCommand;
+            return new AuthMakeCommand;
         });
     }
 
@@ -212,7 +214,7 @@ class ArtisanServiceProvider extends ServiceProvider
     protected function registerCacheClearCommand()
     {
         $this->app->singleton('command.cache.clear', function ($app) {
-            return new CacheClearCommand($app['cache']);
+            return new CacheClearCommand($app['cache'], $app['files']);
         });
     }
 
@@ -333,6 +335,18 @@ class ArtisanServiceProvider extends ServiceProvider
     {
         $this->app->singleton('command.event.make', function ($app) {
             return new EventMakeCommand($app['files']);
+        });
+    }
+
+    /**
+     * Register the command.
+     *
+     * @return void
+     */
+    protected function registerExceptionMakeCommand()
+    {
+        $this->app->singleton('command.exception.make', function ($app) {
+            return new ExceptionMakeCommand($app['files']);
         });
     }
 
@@ -564,18 +578,6 @@ class ArtisanServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    protected function registerOptimizeCommand()
-    {
-        $this->app->singleton('command.optimize', function ($app) {
-            return new OptimizeCommand($app['composer']);
-        });
-    }
-
-    /**
-     * Register the command.
-     *
-     * @return void
-     */
     protected function registerPackageDiscoverCommand()
     {
         $this->app->singleton('command.package.discover', function ($app) {
@@ -724,6 +726,18 @@ class ArtisanServiceProvider extends ServiceProvider
     {
         $this->app->singleton('command.request.make', function ($app) {
             return new RequestMakeCommand($app['files']);
+        });
+    }
+
+    /**
+     * Register the command.
+     *
+     * @return void
+     */
+    protected function registerResourceMakeCommand()
+    {
+        $this->app->singleton('command.resource.make', function ($app) {
+            return new ResourceMakeCommand($app['files']);
         });
     }
 

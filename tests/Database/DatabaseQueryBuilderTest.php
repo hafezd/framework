@@ -1045,6 +1045,27 @@ class DatabaseQueryBuilderTest extends TestCase
         $this->assertEquals([48, 'baz', null], $builder->getBindings());
     }
 
+    public function testJoinWhereInSubquery()
+    {
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->join('contacts', function ($j) {
+            $q = $this->getBuilder();
+            $q->select('name')->from('contacts')->where('name', 'baz');
+            $j->on('users.id', '=', 'contacts.id')->whereIn('contacts.name', $q);
+        });
+        $this->assertEquals('select * from "users" inner join "contacts" on "users"."id" = "contacts"."id" and "contacts"."name" in (select "name" from "contacts" where "name" = ?)', $builder->toSql());
+        $this->assertEquals(['baz'], $builder->getBindings());
+
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->join('contacts', function ($j) {
+            $q = $this->getBuilder();
+            $q->select('name')->from('contacts')->where('name', 'baz');
+            $j->on('users.id', '=', 'contacts.id')->orWhereIn('contacts.name', $q);
+        });
+        $this->assertEquals('select * from "users" inner join "contacts" on "users"."id" = "contacts"."id" or "contacts"."name" in (select "name" from "contacts" where "name" = ?)', $builder->toSql());
+        $this->assertEquals(['baz'], $builder->getBindings());
+    }
+
     public function testJoinWhereNotIn()
     {
         $builder = $this->getBuilder();
@@ -1099,6 +1120,51 @@ class DatabaseQueryBuilderTest extends TestCase
         });
         $this->assertEquals('select * from "users" left join "contacts" on "users"."id" = "contacts"."id" and ("role" = ? or "contacts"."disabled" is null or year(contacts.created_at) = 2016)', $builder->toSql());
         $this->assertEquals(['admin'], $builder->getBindings());
+    }
+
+    public function testJoinsWithSubqueryCondition()
+    {
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->leftJoin('contacts', function ($j) {
+            $j->on('users.id', 'contacts.id')->whereIn('contact_type_id', function ($q) {
+                $q->select('id')->from('contact_types')
+                    ->where('category_id', '1')
+                    ->whereNull('deleted_at');
+            });
+        });
+        $this->assertEquals('select * from "users" left join "contacts" on "users"."id" = "contacts"."id" and "contact_type_id" in (select "id" from "contact_types" where "category_id" = ? and "deleted_at" is null)', $builder->toSql());
+        $this->assertEquals(['1'], $builder->getBindings());
+
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->leftJoin('contacts', function ($j) {
+            $j->on('users.id', 'contacts.id')->whereExists(function ($q) {
+                $q->selectRaw('1')->from('contact_types')
+                    ->whereRaw('contact_types.id = contacts.contact_type_id')
+                    ->where('category_id', '1')
+                    ->whereNull('deleted_at');
+            });
+        });
+        $this->assertEquals('select * from "users" left join "contacts" on "users"."id" = "contacts"."id" and exists (select 1 from "contact_types" where contact_types.id = contacts.contact_type_id and "category_id" = ? and "deleted_at" is null)', $builder->toSql());
+        $this->assertEquals(['1'], $builder->getBindings());
+    }
+
+    public function testJoinsWithAdvancedSubqueryCondition()
+    {
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->leftJoin('contacts', function ($j) {
+            $j->on('users.id', 'contacts.id')->whereExists(function ($q) {
+                $q->selectRaw('1')->from('contact_types')
+                    ->whereRaw('contact_types.id = contacts.contact_type_id')
+                    ->where('category_id', '1')
+                    ->whereNull('deleted_at')
+                    ->whereIn('level_id', function ($q) {
+                        $q->select('id')->from('levels')
+                            ->where('is_active', true);
+                    });
+            });
+        });
+        $this->assertEquals('select * from "users" left join "contacts" on "users"."id" = "contacts"."id" and exists (select 1 from "contact_types" where contact_types.id = contacts.contact_type_id and "category_id" = ? and "deleted_at" is null and "level_id" in (select "id" from "levels" where "is_active" = ?))', $builder->toSql());
+        $this->assertEquals(['1', true], $builder->getBindings());
     }
 
     public function testRawExpressionsInSelect()
@@ -1554,6 +1620,21 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->getConnection()->shouldReceive('delete')->once()->with('delete [users] from [users] inner join [contacts] on [users].[id] = [contacts].[id] where [users].[id] = ?', [1])->andReturn(1);
         $result = $builder->from('users')->join('contacts', 'users.id', '=', 'contacts.id')->delete(1);
         $this->assertEquals(1, $result);
+
+        $builder = $this->getPostgresBuilder();
+        $builder->getConnection()->shouldReceive('delete')->once()->with('delete from "users" USING "contacts" where "users"."email" = ? and "users"."id" = "contacts"."id"', ['foo'])->andReturn(1);
+        $result = $builder->from('users')->join('contacts', 'users.id', '=', 'contacts.id')->where('users.email', '=', 'foo')->delete();
+        $this->assertEquals(1, $result);
+
+        $builder = $this->getPostgresBuilder();
+        $builder->getConnection()->shouldReceive('delete')->once()->with('delete from "users" as "a" USING "users" as "b" where "email" = ? and "a"."id" = "b"."user_id"', ['foo'])->andReturn(1);
+        $result = $builder->from('users AS a')->join('users AS b', 'a.id', '=', 'b.user_id')->where('email', '=', 'foo')->orderBy('id')->limit(1)->delete();
+        $this->assertEquals(1, $result);
+
+        $builder = $this->getPostgresBuilder();
+        $builder->getConnection()->shouldReceive('delete')->once()->with('delete from "users" USING "contacts" where "users"."id" = ? and "users"."id" = "contacts"."id"', [1])->andReturn(1);
+        $result = $builder->from('users')->join('contacts', 'users.id', '=', 'contacts.id')->orderBy('id')->take(1)->delete(1);
+        $this->assertEquals(1, $result);
     }
 
     public function testTruncateMethod()
@@ -1790,11 +1871,12 @@ class DatabaseQueryBuilderTest extends TestCase
 
     /**
      * @expectedException \BadMethodCallException
-     * @expectedExceptionMessage Call to undefined method Illuminate\Database\Query\Builder::noValidMethodHere()
      */
     public function testBuilderThrowsExpectedExceptionWithUndefinedMethod()
     {
         $builder = $this->getBuilder();
+        $builder->getConnection()->shouldReceive('select');
+        $builder->getProcessor()->shouldReceive('processSelect')->andReturn([]);
 
         $builder->noValidMethodHere();
     }

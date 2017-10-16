@@ -133,6 +133,10 @@ class Mailable implements MailableContract, Renderable
      */
     public function queue(Queue $queue)
     {
+        if (property_exists($this, 'delay')) {
+            return $this->later($this->delay, $queue);
+        }
+
         $connection = property_exists($this, 'connection') ? $this->connection : null;
 
         $queueName = property_exists($this, 'queue') ? $this->queue : null;
@@ -145,8 +149,8 @@ class Mailable implements MailableContract, Renderable
     /**
      * Deliver the queued message after the given delay.
      *
-     * @param  \DateTime|int  $delay
-     * @param  Queue  $queue
+     * @param  \DateTimeInterface|\DateInterval|int  $delay
+     * @param  \Illuminate\Contracts\Queue\Factory  $queue
      * @return mixed
      */
     public function later($delay, Queue $queue)
@@ -454,6 +458,18 @@ class Mailable implements MailableContract, Renderable
     public function replyTo($address, $name = null)
     {
         return $this->setAddress($address, $name, 'replyTo');
+    }
+
+    /**
+     * Determine if the given recipient is set on the mailable.
+     *
+     * @param  object|array|string  $address
+     * @param  string|null  $name
+     * @return bool
+     */
+    public function hasReplyTo($address, $name = null)
+    {
+        return $this->hasRecipient($address, $name, 'replyTo');
     }
 
     /**

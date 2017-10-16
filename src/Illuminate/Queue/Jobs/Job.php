@@ -2,7 +2,7 @@
 
 namespace Illuminate\Queue\Jobs;
 
-use Illuminate\Queue\InteractsWithTime;
+use Illuminate\Support\InteractsWithTime;
 
 abstract class Job
 {
@@ -54,6 +54,13 @@ abstract class Job
      * @var string
      */
     protected $queue;
+
+    /**
+     * Get the job identifier.
+     *
+     * @return string
+     */
+    abstract public function getJobId();
 
     /**
      * Get the raw body of the job.
@@ -188,7 +195,7 @@ abstract class Job
     }
 
     /**
-     * The number of times to attempt a job.
+     * Get the number of times to attempt a job.
      *
      * @return int|null
      */
@@ -198,13 +205,23 @@ abstract class Job
     }
 
     /**
-     * The number of seconds the job can run.
+     * Get the number of seconds the job can run.
      *
      * @return int|null
      */
     public function timeout()
     {
         return $this->payload()['timeout'] ?? null;
+    }
+
+    /**
+     * Get the timestamp indicating when the job should timeout.
+     *
+     * @return int|null
+     */
+    public function timeoutAt()
+    {
+        return $this->payload()['timeoutAt'] ?? null;
     }
 
     /**

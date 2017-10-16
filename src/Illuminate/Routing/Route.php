@@ -9,15 +9,17 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Container\Container;
+use Illuminate\Support\Traits\Macroable;
 use Illuminate\Routing\Matching\UriValidator;
 use Illuminate\Routing\Matching\HostValidator;
 use Illuminate\Routing\Matching\MethodValidator;
 use Illuminate\Routing\Matching\SchemeValidator;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Routing\Contracts\ControllerDispatcher as ControllerDispatcherContract;
 
 class Route
 {
-    use RouteDependencyResolverTrait;
+    use Macroable, RouteDependencyResolverTrait;
 
     /**
      * The URI pattern the route responds to.
@@ -39,6 +41,13 @@ class Route
      * @var array
      */
     public $action;
+
+    /**
+     * Indicates whether the route is a fallback route.
+     *
+     * @var bool
+     */
+    public $isFallback = false;
 
     /**
      * The controller instance.
@@ -199,7 +208,7 @@ class Route
      */
     protected function runController()
     {
-        return (new ControllerDispatcher($this->container))->dispatch(
+        return $this->controllerDispatcher()->dispatch(
             $this, $this->getController(), $this->getControllerMethod()
         );
     }
@@ -211,10 +220,10 @@ class Route
      */
     public function getController()
     {
-        $class = $this->parseControllerCallback()[0];
-
         if (! $this->controller) {
-            $this->controller = $this->container->make($class);
+            $class = $this->parseControllerCallback()[0];
+
+            $this->controller = $this->container->make(ltrim($class, '\\'));
         }
 
         return $this->controller;
@@ -267,7 +276,7 @@ class Route
     /**
      * Compile the route into a Symfony CompiledRoute instance.
      *
-     * @return void
+     * @return \Symfony\Component\Routing\CompiledRoute
      */
     protected function compileRoute()
     {
@@ -478,6 +487,18 @@ class Route
         foreach ($wheres as $name => $expression) {
             $this->where($name, $expression);
         }
+
+        return $this;
+    }
+
+    /**
+     * Mark this route as a fallback route.
+     *
+     * @return $this
+     */
+    public function fallback()
+    {
+        $this->isFallback = true;
 
         return $this;
     }
@@ -696,13 +717,14 @@ class Route
     }
 
     /**
-     * Get the action array for the route.
+     * Get the action array or one of its properties for the route.
      *
-     * @return array
+     * @param  string|null  $key
+     * @return mixed
      */
-    public function getAction()
+    public function getAction($key = null)
     {
-        return $this->action;
+        return Arr::get($this->action, $key);
     }
 
     /**
@@ -770,9 +792,23 @@ class Route
             return [];
         }
 
-        return ControllerDispatcher::getMiddleware(
+        return $this->controllerDispatcher()->getMiddleware(
             $this->getController(), $this->getControllerMethod()
         );
+    }
+
+    /**
+     * Get the dispatcher for the route's controller.
+     *
+     * @return \Illuminate\Routing\Contracts\ControllerDispatcher
+     */
+    public function controllerDispatcher()
+    {
+        if ($this->container->bound(ControllerDispatcherContract::class)) {
+            return $this->container->make(ControllerDispatcherContract::class);
+        }
+
+        return new ControllerDispatcher($this->container);
     }
 
     /**

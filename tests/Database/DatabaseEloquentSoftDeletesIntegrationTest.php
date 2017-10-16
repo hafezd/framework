@@ -425,9 +425,6 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $this->assertCount(0, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWhereHasWithNestedDeletedRelationshipAndOnlyTrashedCondition()
     {
         $this->createUsers();
@@ -450,9 +447,6 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $this->assertCount(1, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWhereHasWithNestedDeletedRelationship()
     {
         $this->createUsers();
@@ -469,9 +463,6 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $this->assertCount(1, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWhereHasWithNestedDeletedRelationshipAndWithTrashedCondition()
     {
         $this->createUsers();
@@ -484,9 +475,6 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $this->assertCount(1, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWithCountWithNestedDeletedRelationshipAndOnlyTrashedCondition()
     {
         $this->createUsers();
@@ -564,7 +552,6 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
 
     /**
      * @expectedException \BadMethodCallException
-     * @expectedExceptionMessage Call to undefined method Illuminate\Database\Query\Builder::thisMethodDoesNotExist()
      */
     public function testMorphToWithBadMethodCall()
     {
@@ -600,7 +587,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
             $q->where('email', 'taylorotwell@gmail.com');
         }])->first();
 
-        $this->assertEquals(null, $comment->owner);
+        $this->assertNull($comment->owner);
     }
 
     public function testMorphToWithoutConstraints()
@@ -622,7 +609,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $abigail->delete();
         $comment = SoftDeletesTestCommentWithTrashed::with('owner')->first();
 
-        $this->assertEquals(null, $comment->owner);
+        $this->assertNull($comment->owner);
     }
 
     public function testMorphToNonSoftDeletingModel()
@@ -642,7 +629,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $taylor->delete();
         $comment = SoftDeletesTestCommentWithTrashed::with('owner')->first();
 
-        $this->assertEquals(null, $comment->owner);
+        $this->assertNull($comment->owner);
     }
 
     /**

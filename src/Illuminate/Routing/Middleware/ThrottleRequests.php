@@ -5,13 +5,15 @@ namespace Illuminate\Routing\Middleware;
 use Closure;
 use RuntimeException;
 use Illuminate\Support\Str;
-use Illuminate\Support\Carbon;
 use Illuminate\Cache\RateLimiter;
+use Illuminate\Support\InteractsWithTime;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ThrottleRequests
 {
+    use InteractsWithTime;
+
     /**
      * The rate limiter instance.
      *
@@ -93,7 +95,9 @@ class ThrottleRequests
             return sha1($route->getDomain().'|'.$request->ip());
         }
 
-        throw new RuntimeException('Unable to generate the request signature. Route unavailable.');
+        throw new RuntimeException(
+            'Unable to generate the request signature. Route unavailable.'
+        );
     }
 
     /**
@@ -105,7 +109,7 @@ class ThrottleRequests
      */
     protected function buildException($key, $maxAttempts)
     {
-        $retryAfter = $this->limiter->availableIn($key);
+        $retryAfter = $this->getTimeUntilNextRetry($key);
 
         $headers = $this->getHeaders(
             $maxAttempts,
@@ -113,7 +117,20 @@ class ThrottleRequests
             $retryAfter
         );
 
-        return new HttpException(429, 'Too Many Attempts.', null, $headers);
+        return new HttpException(
+            429, 'Too Many Attempts.', null, $headers
+        );
+    }
+
+    /**
+     * Get the number of seconds until the next retry.
+     *
+     * @param  string  $key
+     * @return int
+     */
+    protected function getTimeUntilNextRetry($key)
+    {
+        return $this->limiter->availableIn($key);
     }
 
     /**
@@ -151,7 +168,7 @@ class ThrottleRequests
 
         if (! is_null($retryAfter)) {
             $headers['Retry-After'] = $retryAfter;
-            $headers['X-RateLimit-Reset'] = Carbon::now()->getTimestamp() + $retryAfter;
+            $headers['X-RateLimit-Reset'] = $this->availableAt($retryAfter);
         }
 
         return $headers;

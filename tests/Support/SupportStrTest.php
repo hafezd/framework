@@ -9,8 +9,6 @@ class SupportStrTest extends TestCase
 {
     /**
      * Test the Str::words method.
-     *
-     * @group laravel
      */
     public function testStringCanBeLimitedByWords()
     {
@@ -67,6 +65,11 @@ class SupportStrTest extends TestCase
         $this->assertTrue(Str::startsWith(7.123, '7'));
         $this->assertTrue(Str::startsWith(7.123, '7.12'));
         $this->assertFalse(Str::startsWith(7.123, '7.13'));
+        // Test for multibyte string support
+        $this->assertTrue(Str::startsWith('Jönköping', 'Jö'));
+        $this->assertTrue(Str::startsWith('Malmö', 'Malmö'));
+        $this->assertFalse(Str::startsWith('Jönköping', 'Jonko'));
+        $this->assertFalse(Str::startsWith('Malmö', 'Malmo'));
     }
 
     public function testEndsWith()
@@ -86,6 +89,23 @@ class SupportStrTest extends TestCase
         $this->assertTrue(Str::endsWith(0.27, '7'));
         $this->assertTrue(Str::endsWith(0.27, '0.27'));
         $this->assertFalse(Str::endsWith(0.27, '8'));
+        // Test for multibyte string support
+        $this->assertTrue(Str::endsWith('Jönköping', 'öping'));
+        $this->assertTrue(Str::endsWith('Malmö', 'mö'));
+        $this->assertFalse(Str::endsWith('Jönköping', 'oping'));
+        $this->assertFalse(Str::endsWith('Malmö', 'mo'));
+    }
+
+    public function testStrBefore()
+    {
+        $this->assertEquals('han', Str::before('hannah', 'nah'));
+        $this->assertEquals('ha', Str::before('hannah', 'n'));
+        $this->assertEquals('ééé ', Str::before('ééé hannah', 'han'));
+        $this->assertEquals('hannah', Str::before('hannah', 'xxxx'));
+        $this->assertEquals('hannah', Str::before('hannah', ''));
+        $this->assertEquals('han', Str::before('han0nah', '0'));
+        $this->assertEquals('han', Str::before('han0nah', 0));
+        $this->assertEquals('han', Str::before('han2nah', 2));
     }
 
     public function testStrAfter()
@@ -95,6 +115,9 @@ class SupportStrTest extends TestCase
         $this->assertEquals('nah', Str::after('ééé hannah', 'han'));
         $this->assertEquals('hannah', Str::after('hannah', 'xxxx'));
         $this->assertEquals('hannah', Str::after('hannah', ''));
+        $this->assertEquals('nah', Str::after('han0nah', '0'));
+        $this->assertEquals('nah', Str::after('han0nah', 0));
+        $this->assertEquals('nah', Str::after('han2nah', 2));
     }
 
     public function testStrContains()
@@ -196,6 +219,9 @@ class SupportStrTest extends TestCase
         $this->assertEquals('foo foobar', Str::replaceFirst('bar', '', 'foobar foobar'));
         $this->assertEquals('foobar foobar', Str::replaceFirst('xxx', 'yyy', 'foobar foobar'));
         $this->assertEquals('foobar foobar', Str::replaceFirst('', 'yyy', 'foobar foobar'));
+        // Test for multibyte string support
+        $this->assertEquals('Jxxxnköping Malmö', Str::replaceFirst('ö', 'xxx', 'Jönköping Malmö'));
+        $this->assertEquals('Jönköping Malmö', Str::replaceFirst('', 'yyy', 'Jönköping Malmö'));
     }
 
     public function testReplaceLast()
@@ -205,6 +231,9 @@ class SupportStrTest extends TestCase
         $this->assertEquals('foobar foo', Str::replaceLast('bar', '', 'foobar foobar'));
         $this->assertEquals('foobar foobar', Str::replaceLast('xxx', 'yyy', 'foobar foobar'));
         $this->assertEquals('foobar foobar', Str::replaceLast('', 'yyy', 'foobar foobar'));
+        // Test for multibyte string support
+        $this->assertEquals('Malmö Jönkxxxping', Str::replaceLast('ö', 'xxx', 'Malmö Jönköping'));
+        $this->assertEquals('Malmö Jönköping', Str::replaceLast('', 'yyy', 'Malmö Jönköping'));
     }
 
     public function testSnake()

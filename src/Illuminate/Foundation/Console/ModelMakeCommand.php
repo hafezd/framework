@@ -68,7 +68,8 @@ class ModelMakeCommand extends GeneratorCommand
     protected function createFactory()
     {
         $this->call('make:factory', [
-            'name' => $this->argument('name'),
+            'name' => $this->argument('name').'Factory',
+            '--model' => $this->argument('name'),
         ]);
     }
 
@@ -111,6 +112,10 @@ class ModelMakeCommand extends GeneratorCommand
      */
     protected function getStub()
     {
+        if ($this->option('pivot')) {
+            return __DIR__.'/stubs/pivot.model.stub';
+        }
+
         return __DIR__.'/stubs/model.stub';
     }
 
@@ -137,11 +142,13 @@ class ModelMakeCommand extends GeneratorCommand
 
             ['controller', 'c', InputOption::VALUE_NONE, 'Create a new controller for the model'],
 
-            ['factory', 'fa', InputOption::VALUE_NONE, 'Create a new factory for the model'],
+            ['factory', 'f', InputOption::VALUE_NONE, 'Create a new factory for the model'],
 
-            ['force', 'f', InputOption::VALUE_NONE, 'Create the class even if the model already exists.'],
+            ['force', null, InputOption::VALUE_NONE, 'Create the class even if the model already exists.'],
 
             ['migration', 'm', InputOption::VALUE_NONE, 'Create a new migration file for the model.'],
+
+            ['pivot', 'p', InputOption::VALUE_NONE, 'Indicates if the generated model should be a custom intermediate table model.'],
 
             ['resource', 'r', InputOption::VALUE_NONE, 'Indicates if the generated controller should be a resource controller.'],
         ];

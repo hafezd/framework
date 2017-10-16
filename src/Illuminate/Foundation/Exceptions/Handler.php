@@ -3,6 +3,7 @@
 namespace Illuminate\Foundation\Exceptions;
 
 use Exception;
+use Throwable;
 use Whoops\Run as Whoops;
 use Illuminate\Support\Arr;
 use Psr\Log\LoggerInterface;
@@ -41,7 +42,7 @@ class Handler implements ExceptionHandlerContract
     protected $container;
 
     /**
-     * A list of the exception types that should not be reported.
+     * A list of the exception types that are not reported.
      *
      * @var array
      */
@@ -53,13 +54,23 @@ class Handler implements ExceptionHandlerContract
      * @var array
      */
     protected $internalDontReport = [
-        \Illuminate\Auth\AuthenticationException::class,
-        \Illuminate\Auth\Access\AuthorizationException::class,
-        \Symfony\Component\HttpKernel\Exception\HttpException::class,
+        AuthenticationException::class,
+        AuthorizationException::class,
+        HttpException::class,
         HttpResponseException::class,
-        \Illuminate\Database\Eloquent\ModelNotFoundException::class,
-        \Illuminate\Session\TokenMismatchException::class,
-        \Illuminate\Validation\ValidationException::class,
+        ModelNotFoundException::class,
+        TokenMismatchException::class,
+        ValidationException::class,
+    ];
+
+    /**
+     * A list of the inputs that are never flashed for validation exceptions.
+     *
+     * @var array
+     */
+    protected $dontFlash = [
+        'password',
+        'password_confirmation',
     ];
 
     /**
@@ -124,7 +135,7 @@ class Handler implements ExceptionHandlerContract
     {
         $dontReport = array_merge($this->dontReport, $this->internalDontReport);
 
-        return ! is_null(collect($dontReport)->first(function ($type) use ($e) {
+        return ! is_null(Arr::first($dontReport, function ($type) use ($e) {
             return $e instanceof $type;
         }));
     }
@@ -141,7 +152,7 @@ class Handler implements ExceptionHandlerContract
                 'userId' => Auth::id(),
                 'email' => Auth::user() ? Auth::user()->email : null,
             ]);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             return [];
         }
     }
@@ -156,9 +167,9 @@ class Handler implements ExceptionHandlerContract
     public function render($request, Exception $e)
     {
         if (method_exists($e, 'render') && $response = $e->render($request)) {
-            return Router::prepareResponse($request, $response);
+            return Router::toResponse($request, $response);
         } elseif ($e instanceof Responsable) {
-            return $e->toResponse();
+            return $e->toResponse($request);
         }
 
         $e = $this->prepareException($e);
@@ -187,12 +198,26 @@ class Handler implements ExceptionHandlerContract
         if ($e instanceof ModelNotFoundException) {
             $e = new NotFoundHttpException($e->getMessage(), $e);
         } elseif ($e instanceof AuthorizationException) {
-            $e = new AccessDeniedHttpException($e->getMessage());
+            $e = new AccessDeniedHttpException($e->getMessage(), $e);
         } elseif ($e instanceof TokenMismatchException) {
-            $e = new HttpException(419, $e->getMessage());
+            $e = new HttpException(419, $e->getMessage(), $e);
         }
 
         return $e;
+    }
+
+    /**
+     * Convert an authentication exception into a response.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Illuminate\Auth\AuthenticationException  $exception
+     * @return \Illuminate\Http\Response
+     */
+    protected function unauthenticated($request, AuthenticationException $exception)
+    {
+        return $request->expectsJson()
+                    ? response()->json(['message' => $exception->getMessage()], 401)
+                    : redirect()->guest(route('login'));
     }
 
     /**
@@ -208,33 +233,43 @@ class Handler implements ExceptionHandlerContract
             return $e->response;
         }
 
-        if (method_exists($this, 'invalid')) {
-            return $this->invalid($request, $e);
-        }
-
-        if ($request->expectsJson()) {
-            return response()->json(
-                $this->formatValidationResponse($e), 422
-            );
-        }
-
-        return redirect()->back()->withInput($request->input())->withErrors(
-            $e->validator->errors()->getMessages(), $e->errorBag
-        );
+        return $request->expectsJson()
+                    ? $this->invalidJson($request, $e)
+                    : $this->invalid($request, $e);
     }
 
     /**
-     * Format the validation JSON response payload.
+     * Convert a validation exception into a response.
      *
-     * @param  \Illuminate\Validation\ValidationException  $e
-     * @return array
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Illuminate\Validation\ValidationException  $exception
+     * @return \Illuminate\Http\Response
      */
-    protected function formatValidationResponse(ValidationException $e)
+    protected function invalid($request, ValidationException $exception)
     {
-        return [
-            'message' => $e->getMessage(),
-            'errors' => $e->validator->errors()->getMessages(),
-        ];
+        $url = $exception->redirectTo ?? url()->previous();
+
+        return redirect($url)
+                ->withInput($request->except($this->dontFlash))
+                ->withErrors(
+                    $exception->errors(),
+                    $exception->errorBag
+                );
+    }
+
+    /**
+     * Convert a validation exception into a JSON response.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Illuminate\Validation\ValidationException  $exception
+     * @return \Illuminate\Http\JsonResponse
+     */
+    protected function invalidJson($request, ValidationException $exception)
+    {
+        return response()->json([
+            'message' => $exception->getMessage(),
+            'errors' => $exception->errors(),
+        ], $exception->status);
     }
 
     /**
@@ -274,7 +309,7 @@ class Handler implements ExceptionHandlerContract
         $statusCode = $this->isHttpException($e) ? $e->getStatusCode() : 500;
 
         try {
-            $content = config('app.debug')
+            $content = config('app.debug') && class_exists(Whoops::class)
                     ? $this->renderExceptionWithWhoops($e)
                     : $this->renderExceptionWithSymfony($e, config('app.debug'));
         } catch (Exception $e) {
@@ -329,6 +364,13 @@ class Handler implements ExceptionHandlerContract
             $files = new Filesystem;
 
             $handler->handleUnconditionally(true);
+
+            foreach (config('app.debug_blacklist', []) as $key => $secrets) {
+                foreach ($secrets as $secret) {
+                    $handler->blacklist($key, $secret);
+                }
+            }
+
             $handler->setApplicationPaths(
                 array_flip(Arr::except(
                     array_flip($files->directories(base_path())), [base_path('vendor')]
@@ -347,16 +389,17 @@ class Handler implements ExceptionHandlerContract
     {
         $status = $e->getStatusCode();
 
-        view()->replaceNamespace('errors', [
-            resource_path('views/errors'),
-            __DIR__.'/views',
-        ]);
+        $paths = collect(config('view.paths'));
 
-        if (view()->exists("errors::{$status}")) {
-            return response()->view("errors::{$status}", ['exception' => $e], $status, $e->getHeaders());
-        } else {
-            return $this->convertExceptionToResponse($e);
+        view()->replaceNamespace('errors', $paths->map(function ($path) {
+            return "{$path}/errors";
+        })->push(__DIR__.'/views')->all());
+
+        if (view()->exists($view = "errors::{$status}")) {
+            return response()->view($view, ['exception' => $e], $status, $e->getHeaders());
         }
+
+        return $this->convertExceptionToResponse($e);
     }
 
     /**
@@ -410,9 +453,12 @@ class Handler implements ExceptionHandlerContract
     {
         return config('app.debug') ? [
             'message' => $e->getMessage(),
+            'exception' => get_class($e),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
-            'trace' => $e->getTrace(),
+            'trace' => collect($e->getTrace())->map(function ($trace) {
+                return Arr::except($trace, ['args']);
+            })->all(),
         ] : [
             'message' => $this->isHttpException($e) ? $e->getMessage() : 'Server Error',
         ];

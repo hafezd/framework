@@ -5,6 +5,9 @@ namespace Illuminate\Redis;
 use InvalidArgumentException;
 use Illuminate\Contracts\Redis\Factory;
 
+/**
+ * @mixin \Illuminate\Redis\Connections\Connection
+ */
 class RedisManager implements Factory
 {
     /**
@@ -112,6 +115,16 @@ class RedisManager implements Factory
             case 'phpredis':
                 return new Connectors\PhpRedisConnector;
         }
+    }
+
+    /**
+     * Return all of the created connections.
+     *
+     * @return array
+     */
+    public function connections()
+    {
+        return $this->connections;
     }
 
     /**

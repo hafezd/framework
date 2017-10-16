@@ -4,7 +4,6 @@ namespace Illuminate\Tests\Routing;
 
 use DateTime;
 use stdClass;
-use Mockery as m;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
@@ -20,7 +19,6 @@ use Illuminate\Routing\ResourceRegistrar;
 use Illuminate\Contracts\Routing\Registrar;
 use Illuminate\Auth\Middleware\Authenticate;
 use Symfony\Component\HttpFoundation\Response;
-use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 
 class RoutingRouteTest extends TestCase
@@ -298,6 +296,20 @@ class RoutingRouteTest extends TestCase
         $this->assertEquals('foo.bar', $router->currentRouteName());
     }
 
+    public function testRouteGetAction()
+    {
+        $router = $this->getRouter();
+
+        $route = $router->get('foo', function () {
+            return 'foo';
+        })->name('foo');
+
+        $this->assertTrue(is_array($route->getAction()));
+        $this->assertArrayHasKey('as', $route->getAction());
+        $this->assertEquals('foo', $route->getAction('as'));
+        $this->assertNull($route->getAction('unknown_property'));
+    }
+
     public function testMacro()
     {
         $router = $this->getRouter();
@@ -309,6 +321,25 @@ class RoutingRouteTest extends TestCase
         $router->webhook();
         $this->assertEquals('OK', $router->dispatch(Request::create('webhook', 'GET'))->getContent());
         $this->assertEquals('OK', $router->dispatch(Request::create('webhook', 'POST'))->getContent());
+    }
+
+    public function testRouteMacro()
+    {
+        $router = $this->getRouter();
+
+        Route::macro('breadcrumb', function ($breadcrumb) {
+            $this->action['breadcrumb'] = $breadcrumb;
+
+            return $this;
+        });
+
+        $router->get('foo', function () {
+            return 'bar';
+        })->breadcrumb('fooBreadcrumb')->name('foo');
+
+        $router->getRoutes()->refreshNameLookups();
+
+        $this->assertEquals('fooBreadcrumb', $router->getRoutes()->getByName('foo')->getAction()['breadcrumb']);
     }
 
     public function testClassesCanBeInjectedIntoRoutes()
@@ -792,9 +823,6 @@ class RoutingRouteTest extends TestCase
         $this->assertEquals('12345', $router->dispatch(Request::create('foo-bar/12345', 'GET'))->getContent());
     }
 
-    /**
-     * @group shit
-     */
     public function testModelBindingWithCompoundParameterNameAndRouteBinding()
     {
         $router = $this->getRouter();
@@ -854,6 +882,25 @@ class RoutingRouteTest extends TestCase
         $routes = $router->getRoutes();
         $routes = $routes->getRoutes();
         $this->assertEquals('foo', $routes[0]->getPrefix());
+    }
+
+    public function testCurrentRouteUses()
+    {
+        $router = $this->getRouter();
+        $router->get('foo/bar', ['as' => 'foo.bar', 'uses' => 'Illuminate\Tests\Routing\RouteTestControllerStub@index']);
+
+        $this->assertNull($router->currentRouteAction());
+
+        $this->assertEquals('Hello World', $router->dispatch(Request::create('foo/bar', 'GET'))->getContent());
+        $this->assertTrue($router->uses('*RouteTestControllerStub*'));
+        $this->assertTrue($router->uses('*RouteTestControllerStub@index'));
+        $this->assertTrue($router->uses(['*RouteTestControllerStub*', '*FooController*']));
+        $this->assertTrue($router->uses(['*BarController*', '*FooController*', '*RouteTestControllerStub@index']));
+        $this->assertTrue($router->uses(['*BarController*', '*FooController*'], '*RouteTestControllerStub*'));
+        $this->assertFalse($router->uses(['*BarController*', '*FooController*']));
+
+        $this->assertEquals($router->currentRouteAction(), 'Illuminate\Tests\Routing\RouteTestControllerStub@index');
+        $this->assertTrue($router->currentRouteUses('Illuminate\Tests\Routing\RouteTestControllerStub@index'));
     }
 
     public function testRouteGroupingFromFile()
@@ -1101,7 +1148,7 @@ class RoutingRouteTest extends TestCase
 
         $router = $this->getRouter();
         $router->resource('foos', 'FooController', ['parameters' => 'singular']);
-        $router->resource('foos.bars', 'FooController', ['parameters' => 'singular']);
+        $router->resource('foos.bars', 'FooController')->parameters('singular');
         $routes = $router->getRoutes();
         $routes = $routes->getRoutes();
 
@@ -1110,6 +1157,13 @@ class RoutingRouteTest extends TestCase
 
         $router = $this->getRouter();
         $router->resource('foos.bars', 'FooController', ['parameters' => ['foos' => 'foo', 'bars' => 'bar']]);
+        $routes = $router->getRoutes();
+        $routes = $routes->getRoutes();
+
+        $this->assertEquals('foos/{foo}/bars/{bar}', $routes[3]->uri());
+
+        $router = $this->getRouter();
+        $router->resource('foos.bars', 'FooController')->parameter('foos', 'foo')->parameter('bars', 'bar');
         $routes = $router->getRoutes();
         $routes = $routes->getRoutes();
 
@@ -1399,24 +1453,6 @@ class RoutingRouteTest extends TestCase
         $this->assertEquals(302, $response->getStatusCode());
     }
 
-    public function testRouteView()
-    {
-        $container = new Container;
-        $factory = m::mock('Illuminate\View\Factory');
-        $factory->shouldReceive('make')->once()->with('pages.contact', ['foo' => 'bar'])->andReturn('Contact us');
-        $router = new Router(new Dispatcher, $container);
-        $container->bind(ViewFactory::class, function () use ($factory) {
-            return $factory;
-        });
-        $container->singleton(Registrar::class, function () use ($router) {
-            return $router;
-        });
-
-        $router->view('contact', 'pages.contact', ['foo' => 'bar']);
-
-        $this->assertEquals('Contact us', $router->dispatch(Request::create('contact', 'GET'))->getContent());
-    }
-
     protected function getRouter()
     {
         $container = new Container;
@@ -1594,7 +1630,7 @@ class RouteBindingStub
     }
 }
 
-class RouteModelBindingStub
+class RouteModelBindingStub extends Model
 {
     public function getRouteKeyName()
     {
@@ -1614,7 +1650,7 @@ class RouteModelBindingStub
     }
 }
 
-class RouteModelBindingNullStub
+class RouteModelBindingNullStub extends Model
 {
     public function getRouteKeyName()
     {
